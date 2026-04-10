@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenClaw LLM Reviewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #f8f9fb;
+      --card: #ffffff;
+      --border: #e5e7eb;
+      --text: #1f2937;
+      --text-muted: #6b7280;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #059669;
+      --warning: #d97706;
+      --error: #dc2626;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 40px 24px; }
+
+    /* Header */
+    .header { text-align: center; margin-bottom: 36px; }
+    .header h1 { font-size: 24px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .header h1 .icon { font-size: 28px; color: var(--primary); }
+    .header p { color: var(--text-muted); font-size: 14px; margin-top: 6px; }
+
+    /* Card */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; box-shadow: var(--shadow); }
+    .card-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .card-title .icon { font-size: 20px; color: var(--primary); }
+
+    /* Inputs */
+    label { display: block; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; }
+    input[type="text"], select, textarea {
+      width: 100%; padding: 10px 14px; font-size: 14px; font-family: inherit;
+      border: 1px solid var(--border); border-radius: 8px; background: #fff;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); }
+    .form-group { margin-bottom: 14px; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 20px; font-size: 14px; font-weight: 600; font-family: inherit;
+      border: none; border-radius: 8px; cursor: pointer; transition: all 0.15s;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+    .btn-secondary { background: #f3f4f6; color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: #e5e7eb; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+    .btn-group { display: flex; gap: 10px; margin-top: 8px; }
+
+    /* Progress Steps */
+    .steps { display: flex; gap: 6px; margin: 16px 0; }
+    .step {
+      flex: 1; padding: 8px 10px; border-radius: 8px; font-size: 12px; font-weight: 500;
+      background: #f3f4f6; color: var(--text-muted); text-align: center; transition: all 0.3s;
+    }
+    .step.active { background: #dbeafe; color: var(--primary); }
+    .step.done { background: #d1fae5; color: var(--success); }
+    .step.error { background: #fee2e2; color: var(--error); }
+
+    /* Results */
+    .result-section { margin-top: 20px; display: none; }
+    .result-section.visible { display: block; }
+
+    .verdict-badge {
+      display: inline-block; padding: 6px 18px; border-radius: 20px;
+      font-size: 14px; font-weight: 700; letter-spacing: 0.5px;
+    }
+    .verdict-PASS { background: #d1fae5; color: #065f46; }
+    .verdict-FAIL { background: #fee2e2; color: #991b1b; }
+    .verdict-CONDITIONAL { background: #fef3c7; color: #92400e; }
+
+    .score-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0;
+    }
+    .score-item {
+      background: #f9fafb; border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px; text-align: center;
+    }
+    .score-item .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .score-item .value { font-size: 22px; font-weight: 700; color: var(--text); }
+    .score-item .gt { font-size: 11px; color: var(--text-muted); }
+
+    /* Check list */
+    .check-list { list-style: none; margin: 12px 0; }
+    .check-item {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 8px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px;
+    }
+    .check-item:last-child { border-bottom: none; }
+    .check-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 600; flex-shrink: 0;
+    }
+    .check-PASS { background: #d1fae5; color: #065f46; }
+    .check-WARNING { background: #fef3c7; color: #92400e; }
+    .check-FAIL { background: #fee2e2; color: #991b1b; }
+    .check-issues { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+
+    /* Link */
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
+      background: #1f2937; color: #fff; border-radius: 8px; font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000;
+      opacity: 0; transform: translateY(10px); transition: all 0.3s;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    /* Collapsible */
+    .collapsible-header {
+      cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 500; color: var(--text-muted); margin-top: 8px;
+    }
+    .collapsible-body { display: none; margin-top: 6px; }
+    .collapsible-body.open { display: block; }
+
+    /* Status */
+    .status-msg { font-size: 13px; margin-top: 10px; }
+    .status-msg.error { color: var(--error); }
+    .status-msg.success { color: var(--success); }
+
+    /* Persona info */
+    .persona-card { background: #f9fafb; border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 10px; font-size: 13px; }
+    .persona-card dt { font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; }
+    .persona-card dd { margin-bottom: 6px; }
+
+    /* Report FAB */
+    .report-fab {
+      position: fixed; bottom: 24px; left: 24px; z-index: 900;
+      width: 48px; height: 48px; border-radius: 50%; border: none;
+      background: var(--error); color: #fff; cursor: pointer;
+      box-shadow: 0 4px 14px rgba(220,38,38,0.35);
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .report-fab:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(220,38,38,0.45); }
+    .report-fab .material-icons-round { font-size: 24px; }
+
+    /* Modal overlay */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 950;
+      background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+
+    .modal {
+      background: var(--card); border-radius: 16px; padding: 28px;
+      width: 90%; max-width: 480px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      transform: translateY(20px) scale(0.97); transition: transform 0.25s;
+    }
+    .modal-overlay.open .modal { transform: translateY(0) scale(1); }
+
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
+    }
+    .modal-header h2 { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .modal-header h2 .material-icons-round { color: var(--error); font-size: 22px; }
+    .modal-close {
+      background: none; border: none; cursor: pointer; color: var(--text-muted);
+      width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+    }
+    .modal-close:hover { background: #f3f4f6; }
+
+    .modal-hint {
+      background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;
+      padding: 10px 14px; font-size: 12px; color: #1e40af; margin-bottom: 16px;
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .modal-hint .material-icons-round { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1><span class="icon material-icons-round">fact_check</span> OpenClaw QA Reviewer</h1>
+    <p>Automated trajectory review &middot; Rule-based checks + LLM scoring</p>
+  </div>
+
+  <!-- Card 1: Full Review -->
+  <div class="card">
+    <div class="card-title"><span class="icon material-icons-round">grading</span> Full Task Review</div>
+
+    <div class="form-group">
+      <label for="driveLink">Drive ZIP Link or File ID</label>
+      <input type="text" id="driveLink" placeholder="https://drive.google.com/file/d/... or file ID">
+    </div>
+
+    <div class="form-group" style="text-align:center; margin:8px 0;">
+      <span style="font-size:12px; color:var(--text-muted)">— or —</span>
+    </div>
+
+    <div class="form-group">
+      <label for="zipUpload">Upload Task ZIP File</label>
+      <input type="file" id="zipUpload" accept=".zip" style="padding:8px; font-size:13px; border:2px dashed var(--border); border-radius:8px; width:100%; cursor:pointer;">
+      <div id="uploadStatus" style="font-size:12px; color:var(--text-muted); margin-top:4px;"></div>
+    </div>
+
+    <div class="form-group">
+      <label for="personaInput">Persona (type to search, leave blank to auto-detect)</label>
+      <input type="text" id="personaInput" list="personaDatalist" placeholder="Start typing a name..." autocomplete="off">
+      <datalist id="personaDatalist"></datalist>
+      <div id="personaMatch" style="font-size:12px; color:var(--text-muted); margin-top:4px;"></div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" id="btnReview" onclick="startReview()">
+        <span class="material-icons-round" style="font-size:18px">play_arrow</span> Run Review
+      </button>
+      <button class="btn btn-secondary" id="btnChecks" onclick="startChecksOnly()">
+        <span class="material-icons-round" style="font-size:18px">checklist</span> Checks Only
+      </button>
+    </div>
+
+    <!-- Progress steps -->
+    <div class="steps" id="progressSteps" style="display:none">
+      <div class="step" id="step1">1. Load ZIP</div>
+      <div class="step" id="step2">2. Run Checks</div>
+      <div class="step" id="step3">3. LLM Scoring</div>
+      <div class="step" id="step4">4. Create Report</div>
+    </div>
+
+    <div class="status-msg" id="statusMsg"></div>
+
+    <!-- Full Review Results -->
+    <div class="result-section" id="reviewResults">
+      <div style="text-align:center; margin-bottom:14px;">
+        <span class="verdict-badge" id="verdictBadge"></span>
+      </div>
+
+      <div style="text-align:center; font-size:13px; color:var(--text-muted); margin-bottom:10px;">
+        <span id="resultTaskId"></span> &middot; <span id="resultUserName"></span>
+      </div>
+
+      <div class="score-grid" id="scoreGrid"></div>
+
+      <div style="text-align:center; margin:12px 0;">
+        <a id="docLink" href="#" target="_blank" class="btn btn-secondary btn-sm">
+          <span class="material-icons-round" style="font-size:16px">description</span> Open Google Doc Report
+        </a>
+      </div>
+
+      <div class="collapsible-header" onclick="toggleCollapsible('checksDetail')">
+        <span class="material-icons-round" style="font-size:16px" id="checksDetailIcon">expand_more</span> Check Details
+      </div>
+      <div class="collapsible-body" id="checksDetail">
+        <ul class="check-list" id="checksList"></ul>
+      </div>
+    </div>
+
+    <!-- Checks Only Results -->
+    <div class="result-section" id="checksOnlyResults">
+      <div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">
+        <strong id="checksTaskId"></strong> &middot; <span id="checksUserName"></span>
+        &middot; <span id="checksTurnCount"></span> turns &middot; <span id="checksToolCount"></span> tool calls
+      </div>
+      <ul class="check-list" id="checksOnlyList"></ul>
+    </div>
+  </div>
+
+  <!-- Config status (read-only) -->
+  <div style="text-align:center; font-size:11px; color:var(--text-muted); margin-top:4px;" id="configStatus"></div>
+
+</div>
+
+<!-- Report Issue FAB -->
+<button class="report-fab" onclick="openReportModal()" title="Report an issue">
+  <span class="material-icons-round">bug_report</span>
+</button>
+
+<!-- Report Issue Modal -->
+<div class="modal-overlay" id="reportOverlay" onclick="onOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2><span class="material-icons-round">bug_report</span> Report Issue</h2>
+      <button class="modal-close" onclick="closeReportModal()">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+
+    <div class="modal-hint">
+      <span class="material-icons-round">lightbulb</span>
+      <span>Please also add a <strong>comment directly on the Google Doc report</strong> highlighting the specific issue so we can review it in context.</span>
+    </div>
+
+    <div class="form-group">
+      <label for="reportDocLink">Google Doc Report Link</label>
+      <input type="text" id="reportDocLink" placeholder="https://docs.google.com/document/d/...">
+    </div>
+
+    <div class="form-group">
+      <label for="reportDescription">Describe the issue</label>
+      <textarea id="reportDescription" rows="3" placeholder="e.g. Claim sourcing flagged a correct data analysis summary as unsourced, verdict should be PASS not FAIL..."></textarea>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:12px;">
+      <button class="btn btn-primary" id="btnReport" onclick="submitReport()">
+        <span class="material-icons-round" style="font-size:18px">send</span> Submit
+      </button>
+      <button class="btn btn-secondary" onclick="closeReportModal()">Cancel</button>
+    </div>
+    <div class="status-msg" id="reportStatus"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  // ═══════ Init ═══════
+  var allPersonas = [];
+
+  document.addEventListener('DOMContentLoaded', function() {
+    loadPersonas();
+    loadConfig();
+
+    document.getElementById('personaInput').addEventListener('input', onPersonaInput);
+  });
+
+  function loadPersonas() {
+    google.script.run
+      .withSuccessHandler(function(list) {
+        allPersonas = list || [];
+        var dl = document.getElementById('personaDatalist');
+        dl.innerHTML = '';
+        for (var i = 0; i < allPersonas.length; i++) {
+          var opt = document.createElement('option');
+          opt.value = allPersonas[i].name;
+          opt.setAttribute('data-key', allPersonas[i].key);
+          opt.label = allPersonas[i].job + ' · ' + allPersonas[i].city;
+          dl.appendChild(opt);
+        }
+        document.getElementById('personaCount').textContent = allPersonas.length + ' personas loaded';
+      })
+      .withFailureHandler(function(err) {
+        document.getElementById('personaCount').textContent = 'Failed to load personas: ' + err.message;
+      })
+      .getPersonaList();
+  }
+
+  function normName(s) { return s.toLowerCase().replace(/[-]/g, ' ').replace(/\s+/g, ' ').trim(); }
+
+  function onPersonaInput() {
+    var val = normName(document.getElementById('personaInput').value);
+    var matchEl = document.getElementById('personaMatch');
+    if (!val) { matchEl.textContent = ''; return; }
+
+    var match = allPersonas.find(function(p) { return normName(p.name) === val; });
+    if (match) {
+      matchEl.innerHTML = '<span style="color:var(--success)">Matched: ' + escHtml(match.name) +
+        ' — ' + escHtml(match.job) + ' (' + escHtml(match.city) + ') [' + escHtml(match.pid) + ']</span>';
+    } else {
+      var partial = allPersonas.filter(function(p) { return normName(p.name).indexOf(val) !== -1; });
+      matchEl.textContent = partial.length + ' matching persona(s)';
+    }
+  }
+
+  function getSelectedPersonaKey() {
+    var val = normName(document.getElementById('personaInput').value);
+    if (!val) return '';
+    var match = allPersonas.find(function(p) { return normName(p.name) === val; });
+    return match ? match.key : '';
+  }
+
+  function loadConfig() {
+    google.script.run
+      .withSuccessHandler(function(cfg) {
+        var parts = [];
+        if (!cfg.hasApiKey) parts.push('API key not configured');
+        if (!cfg.hasPersonas) parts.push('Personas not loaded');
+        document.getElementById('configStatus').textContent =
+          parts.length ? parts.join(' · ') : cfg.model + ' · Ready';
+      })
+      .getConfig();
+  }
+
+
+  // ═══════ Full Review ═══════
+  function startReview() {
+    var link = document.getElementById('driveLink').value.trim();
+    var fileInput = document.getElementById('zipUpload');
+    var file = fileInput.files && fileInput.files[0];
+
+    if (!link && !file) { showToast('Please enter a Drive link or upload a ZIP file.'); return; }
+
+    var persona = getSelectedPersonaKey();
+    setRunning(true);
+    showSteps(true);
+    setStep(1, 'active');
+    hideResults();
+
+    if (file) {
+      setStatus('Reading file (' + (file.size / 1024).toFixed(0) + ' KB)...');
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var base64 = e.target.result.split(',')[1];
+        setStep(1, 'done'); setStep(2, 'active'); setStatus('Running checks...');
+        google.script.run
+          .withSuccessHandler(onReviewSuccess)
+          .withFailureHandler(onReviewError)
+          .runReviewFromUpload(base64, file.name, persona);
+        setTimeout(function() { setStep(2, 'done'); setStep(3, 'active'); setStatus('LLM scoring...'); }, 3000);
+        setTimeout(function() { setStep(3, 'done'); setStep(4, 'active'); setStatus('Creating report...'); }, 8000);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setStatus('Starting review...');
+      setTimeout(function() { setStep(1, 'done'); setStep(2, 'active'); setStatus('Running checks...'); }, 500);
+      google.script.run
+        .withSuccessHandler(onReviewSuccess)
+        .withFailureHandler(onReviewError)
+        .runReview(link, persona);
+      setTimeout(function() { setStep(2, 'done'); setStep(3, 'active'); setStatus('LLM scoring...'); }, 3000);
+      setTimeout(function() { setStep(3, 'done'); setStep(4, 'active'); setStatus('Creating report...'); }, 8000);
+    }
+  }
+
+  function onReviewSuccess(result) {
+    setStep(2, 'done'); setStep(3, 'done'); setStep(4, 'done');
+    setStatus('Review complete!', 'success');
+    showReviewResults(result);
+    setRunning(false);
+  }
+
+  function onReviewError(err) {
+    setAllStepsError();
+    setStatus('Error: ' + err.message, 'error');
+    setRunning(false);
+  }
+
+  function showReviewResults(r) {
+    var el = document.getElementById('reviewResults');
+    el.classList.add('visible');
+
+    document.getElementById('verdictBadge').textContent = r.verdict;
+    document.getElementById('verdictBadge').className = 'verdict-badge verdict-' + r.verdict;
+    document.getElementById('resultTaskId').textContent = r.task_id;
+    document.getElementById('resultUserName').textContent = r.user_name;
+
+    var grid = document.getElementById('scoreGrid');
+    grid.innerHTML = '';
+    var axes = ['correctness','completeness','efficiency','naturality','overall','weighted'];
+    var labels = ['Correctness','Completeness','Efficiency','Naturality','Overall','Weighted'];
+    for (var i = 0; i < axes.length; i++) {
+      var val = axes[i] === 'weighted' ? r.scores.weighted : r.scores[axes[i]];
+      var gtVal = r.ground_truth && r.ground_truth[axes[i]] != null ? r.ground_truth[axes[i]] : null;
+      var item = document.createElement('div');
+      item.className = 'score-item';
+      item.innerHTML = '<div class="label">' + labels[i] + '</div>' +
+        '<div class="value">' + val + '</div>' +
+        (gtVal !== null ? '<div class="gt">GT: ' + gtVal + '</div>' : '');
+      grid.appendChild(item);
+    }
+
+    document.getElementById('docLink').href = r.doc_url;
+    renderCheckList('checksList', r.checks);
+
+    if (r.sheet_error) {
+      console.warn('Sheet write error:', r.sheet_error);
+      showToast('Sheet write failed: ' + r.sheet_error);
+    }
+  }
+
+
+  // ═══════ Checks Only ═══════
+  function startChecksOnly() {
+    var link = document.getElementById('driveLink').value.trim();
+    var fileInput = document.getElementById('zipUpload');
+    var file = fileInput.files && fileInput.files[0];
+
+    if (!link && !file) { showToast('Please enter a Drive link or upload a ZIP file.'); return; }
+
+    var persona = getSelectedPersonaKey();
+    setRunning(true);
+    hideResults();
+    setStatus('Running checks...');
+
+    if (file) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var base64 = e.target.result.split(',')[1];
+        google.script.run
+          .withSuccessHandler(function(result) {
+            setStatus('Checks complete!', 'success');
+            showChecksOnlyResults(result);
+            setRunning(false);
+          })
+          .withFailureHandler(function(err) {
+            setStatus('Error: ' + err.message, 'error');
+            setRunning(false);
+          })
+          .runChecksOnlyFromUpload(base64, file.name, persona);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          setStatus('Checks complete!', 'success');
+          showChecksOnlyResults(result);
+          setRunning(false);
+        })
+        .withFailureHandler(function(err) {
+          setStatus('Error: ' + err.message, 'error');
+          setRunning(false);
+        })
+        .runChecksOnly(link, persona);
+    }
+  }
+
+  function showChecksOnlyResults(r) {
+    var el = document.getElementById('checksOnlyResults');
+    el.classList.add('visible');
+    document.getElementById('checksTaskId').textContent = r.task_id;
+    document.getElementById('checksUserName').textContent = r.user_name;
+    document.getElementById('checksTurnCount').textContent = r.turn_count;
+    document.getElementById('checksToolCount').textContent = r.tool_call_count;
+    renderCheckList('checksOnlyList', r.checks);
+  }
+
+  var CHECK_LABELS = {
+    persona_match: 'Persona Match',
+    claim_sourcing: 'Claim Sourcing',
+    tool_efficiency: 'Tool Efficiency',
+    workspace_diff: 'Workspace Changes',
+    user_md_propagation: 'USER.md Propagation',
+    agentic_depth: 'Agentic Depth',
+    jailbreak_detection: 'Jailbreak Detection',
+    cron_dry_run: 'Cron Dry-Run',
+    fourth_wall: 'Fourth-Wall Breaking',
+    degenerate_loop: 'Degenerate Loop'
+  };
+
+  function renderCheckList(containerId, checks) {
+    var ul = document.getElementById(containerId);
+    ul.innerHTML = '';
+    for (var i = 0; i < checks.length; i++) {
+      var c = checks[i];
+      var li = document.createElement('li');
+      li.className = 'check-item';
+      var issuesHtml = '';
+      if (c.issues && c.issues.length) {
+        issuesHtml = '<div class="check-issues">' +
+          c.issues.map(function(iss) { return '&bull; ' + escHtml(iss); }).join('<br>') +
+          '</div>';
+      }
+      var displayName = CHECK_LABELS[c.check] || c.check;
+      li.innerHTML = '<span class="check-badge check-' + c.result + '">' + c.result + '</span>' +
+        '<div><strong>' + displayName + '</strong> <span style="font-size:11px;color:var(--text-muted)">[' + c.severity + ']</span>' +
+        issuesHtml + '</div>';
+      ul.appendChild(li);
+    }
+  }
+
+
+  // ═══════ Persona Lookup ═══════
+  function showPersonaInfo() {
+    var val = normName(document.getElementById('personaLookupInput').value);
+    var container = document.getElementById('personaInfo');
+    if (!val) { container.innerHTML = '<p style="color:var(--text-muted)">Type a persona name and click Look Up.</p>'; return; }
+
+    var match = allPersonas.find(function(p) { return normName(p.name) === val; });
+    if (!match) {
+      container.innerHTML = '<p style="color:var(--error)">No exact match for "' + escHtml(val) + '". Try selecting from the suggestions.</p>';
+      return;
+    }
+
+    container.innerHTML = '<p style="color:var(--text-muted)">Loading...</p>';
+    google.script.run
+      .withSuccessHandler(function(registryJson) {
+        var registry = {};
+        try { registry = JSON.parse(registryJson || '{}'); } catch(e) {}
+        var rec = registry[match.key];
+        if (!rec) { container.innerHTML = '<p style="color:var(--error)">Persona data not found.</p>'; return; }
+
+        var fields = ['persona_id','full_name','job_title','city','age','gender','education','cultural_bg',
+                      'language','timezone','sector','remote_status','company','company_hq','income',
+                      'household_status','has_faith','tradition','region','urbanicity',
+                      'platforms','hobbies_tier1','hobbies_tier2'];
+        var html = '<div class="persona-card"><dl>';
+        for (var i = 0; i < fields.length; i++) {
+          if (rec[fields[i]]) {
+            html += '<dt>' + fields[i].replace(/_/g,' ') + '</dt><dd>' + escHtml(String(rec[fields[i]])) + '</dd>';
+          }
+        }
+        html += '</dl></div>';
+        container.innerHTML = html;
+      })
+      .withFailureHandler(function(err) { container.innerHTML = '<p style="color:var(--error)">Error: ' + err.message + '</p>'; })
+      .getPersonaRegistryRaw();
+  }
+
+
+
+
+  // ═══════ Report Issue Modal ═══════
+  function openReportModal() {
+    document.getElementById('reportOverlay').classList.add('open');
+    document.getElementById('reportStatus').textContent = '';
+    document.getElementById('reportStatus').className = 'status-msg';
+  }
+
+  function closeReportModal() {
+    document.getElementById('reportOverlay').classList.remove('open');
+  }
+
+  function onOverlayClick(e) {
+    if (e.target === document.getElementById('reportOverlay')) closeReportModal();
+  }
+
+  function submitReport() {
+    var docLink = document.getElementById('reportDocLink').value.trim();
+    var description = document.getElementById('reportDescription').value.trim();
+
+    if (!docLink) { showToast('Please paste the Google Doc report link.'); return; }
+    if (!description) { showToast('Please describe the issue.'); return; }
+
+    var statusEl = document.getElementById('reportStatus');
+    var btn = document.getElementById('btnReport');
+    btn.disabled = true;
+    statusEl.textContent = 'Submitting report...';
+    statusEl.className = 'status-msg';
+
+    var report = {
+      doc_link: docLink,
+      description: description
+    };
+
+    google.script.run
+      .withSuccessHandler(function(msg) {
+        statusEl.textContent = msg;
+        statusEl.className = 'status-msg success';
+        btn.disabled = false;
+        showToast('Report submitted!');
+        document.getElementById('reportDocLink').value = '';
+        document.getElementById('reportDescription').value = '';
+        setTimeout(closeReportModal, 1500);
+      })
+      .withFailureHandler(function(err) {
+        statusEl.textContent = 'Error: ' + err.message;
+        statusEl.className = 'status-msg error';
+        btn.disabled = false;
+      })
+      .submitReport(report);
+  }
+
+
+  // ═══════ Utilities ═══════
+  function setRunning(running) {
+    document.getElementById('btnReview').disabled = running;
+    document.getElementById('btnChecks').disabled = running;
+  }
+
+  function showSteps(show) {
+    document.getElementById('progressSteps').style.display = show ? 'flex' : 'none';
+    if (show) {
+      for (var i = 1; i <= 4; i++) document.getElementById('step' + i).className = 'step';
+    }
+  }
+
+  function setStep(n, state) {
+    document.getElementById('step' + n).className = 'step ' + state;
+  }
+
+  function setAllStepsError() {
+    for (var i = 1; i <= 4; i++) {
+      var el = document.getElementById('step' + i);
+      if (!el.classList.contains('done')) el.className = 'step error';
+    }
+  }
+
+  function setStatus(msg, type) {
+    var el = document.getElementById('statusMsg');
+    el.textContent = msg;
+    el.className = 'status-msg' + (type ? ' ' + type : '');
+  }
+
+  function hideResults() {
+    document.getElementById('reviewResults').classList.remove('visible');
+    document.getElementById('checksOnlyResults').classList.remove('visible');
+  }
+
+  function toggleCollapsible(id) {
+    var body = document.getElementById(id);
+    var icon = document.getElementById(id + 'Icon');
+    body.classList.toggle('open');
+    icon.textContent = body.classList.contains('open') ? 'expand_less' : 'expand_more';
+  }
+
+  function showToast(msg) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(function() { el.classList.remove('show'); }, 3000);
+  }
+
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+</script>
+
+</body>
+</html>
