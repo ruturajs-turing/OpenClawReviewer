@@ -15,7 +15,7 @@ var REVIEW_HEADERS = [
   "Cron Dry-Run", "Fourth-Wall", "Degenerate Loop", "Jailbreak",
   "Persona Match", "Claim Sourcing", "Tool Efficiency", "Workspace Diff",
   "USER.md Propagation", "Agentic Depth",
-  "Checks Summary", "Task Description", "Doc URL"
+  "Checks Summary", "Task Description", "Doc URL", "JSON URL"
 ];
 
 
@@ -84,7 +84,8 @@ function writeScoreRow_(task, score) {
     checkMap["agentic_depth"] || "",
     checkParts.join(", "),
     score.task_description || "",
-    score.doc_url || ""
+    score.doc_url || "",
+    score.json_url || ""
   ];
 
   sheet.appendRow(row);
@@ -165,6 +166,7 @@ function _setupReviewSheet(sheet) {
   sheet.setColumnWidth(26, 300);  // Checks Summary
   sheet.setColumnWidth(27, 350);  // Task Description
   sheet.setColumnWidth(28, 300);  // Doc URL
+  sheet.setColumnWidth(29, 300);  // JSON URL
 
   sheet.getRange(1, 1, 1, REVIEW_HEADERS.length).createFilter();
 }

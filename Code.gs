@@ -325,6 +325,9 @@ function runPipeline_(entries, taskId, personaKey) {
   score.doc_url = docUrl;
   score.task_description = summarizeTask_(task);
 
+  var jsonUrl = createReviewJson_(task, score, persona);
+  score.json_url = jsonUrl;
+
   var sheetError = "";
   var sheetUrl = "";
   try {
@@ -353,6 +356,7 @@ function runPipeline_(entries, taskId, personaKey) {
       return { check: c.check, result: c.result, issues: c.issues.slice(0, 3), severity: c.severity };
     }),
     doc_url: docUrl,
+    json_url: jsonUrl,
     sheet_url: sheetUrl,
     sheet_error: sheetError
   };

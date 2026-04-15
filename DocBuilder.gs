@@ -215,3 +215,96 @@ function createReviewDoc_(task, score, persona) {
   doc.saveAndClose();
   return doc.getUrl();
 }
+
+
+/**
+ * Create a JSON export of the review data and save to shared Drive folder.
+ * @param {Object} task - loaded task object
+ * @param {Object} score - final score object
+ * @param {Object|null} persona - persona record
+ * @returns {string} JSON file Drive URL
+ */
+function createReviewJson_(task, score, persona) {
+  var timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'Z'");
+  var meta = task.metadata || {};
+  var gt = score.ground_truth || {};
+  var axes = ["correctness", "completeness", "efficiency", "naturality", "overall"];
+
+  var checksArr = (score.check_results || []).map(function(chk) {
+    return {
+      check: chk.check,
+      result: chk.result,
+      severity: chk.severity,
+      issues: chk.issues || []
+    };
+  });
+
+  var rationales = {};
+  for (var i = 0; i < axes.length; i++) {
+    rationales[axes[i]] = score[axes[i] + "_rationale"] || "";
+  }
+
+  var gtObj = {};
+  for (var j = 0; j < axes.length; j++) {
+    gtObj[axes[j]] = gt[axes[j]] != null ? gt[axes[j]] : null;
+    gtObj[axes[j] + "_rationale"] = gt[axes[j] + "_rationale"] || "";
+  }
+
+  var personaObj = null;
+  if (persona) {
+    personaObj = {
+      persona_id: persona.persona_id || "",
+      full_name: persona.full_name || "",
+      city: persona.city || "",
+      job_title: persona.job_title || "",
+      sector: persona.sector || "",
+      gender: persona.gender || "",
+      age: persona.age || ""
+    };
+  }
+
+  var reviewData = {
+    version: "1.0",
+    generated_at: timestamp,
+    task_id: score.task_id || "",
+    user_name: task.user_name || "",
+    verdict: score.verdict || "",
+    scores: {
+      correctness: score.correctness || 0,
+      completeness: score.completeness || 0,
+      efficiency: score.efficiency || 0,
+      naturality: score.naturality || 0,
+      overall: score.overall || 0,
+      weighted_score: score.weighted_score || 0
+    },
+    rationales: rationales,
+    ground_truth: gtObj,
+    check_results: checksArr,
+    metadata: {
+      task_type: meta.task_type || [],
+      task_description: score.task_description || meta.task_description || "",
+      task_completion_status: meta.task_completion_status || "",
+      turn_count: task.turn_count || 0,
+      tool_call_count: task.tool_call_count || 0
+    },
+    persona: personaObj,
+    workspace_diff: task.workspace_diff || {},
+    doc_url: score.doc_url || ""
+  };
+
+  var jsonString = JSON.stringify(reviewData, null, 2);
+  var filename = "review_" + (score.task_id || "unknown") + ".json";
+  var file = DriveApp.createFile(filename, jsonString, MimeType.PLAIN_TEXT);
+
+  if (REVIEW_DOCS_FOLDER_ID) {
+    try {
+      var folder = DriveApp.getFolderById(REVIEW_DOCS_FOLDER_ID);
+      folder.addFile(file);
+      DriveApp.getRootFolder().removeFile(file);
+    } catch(e) {
+      Logger.log("DocBuilder: Could not move JSON to folder: " + e.message);
+    }
+  }
+
+  return file.getUrl();
+}
