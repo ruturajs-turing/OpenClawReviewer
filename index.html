@@ -211,6 +211,7 @@
   <div class="card">
     <div class="card-title"><span class="icon material-icons-round">grading</span> Full Task Review</div>
 
+    <!-- Drive link input — commented out, trainers use ZIP upload only
     <div class="form-group">
       <label for="driveLink">Drive ZIP Link or File ID</label>
       <input type="text" id="driveLink" placeholder="https://drive.google.com/file/d/... or file ID">
@@ -219,6 +220,7 @@
     <div class="form-group" style="text-align:center; margin:8px 0;">
       <span style="font-size:12px; color:var(--text-muted)">— or —</span>
     </div>
+    -->
 
     <div class="form-group">
       <label for="zipUpload">Upload Task ZIP File</label>
@@ -262,6 +264,11 @@
         <span id="resultTaskId"></span> &middot; <span id="resultUserName"></span>
       </div>
 
+      <div id="resultTaskDesc" style="background:#f9fafb; border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-bottom:14px; font-size:13px; color:var(--text); display:none;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Task Summary</div>
+        <div id="resultTaskDescText"></div>
+      </div>
+
       <div class="score-grid" id="scoreGrid"></div>
 
       <div style="text-align:center; margin:12px 0;">
@@ -284,6 +291,12 @@
         <strong id="checksTaskId"></strong> &middot; <span id="checksUserName"></span>
         &middot; <span id="checksTurnCount"></span> turns &middot; <span id="checksToolCount"></span> tool calls
       </div>
+
+      <div id="checksTaskDesc" style="background:#f9fafb; border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-bottom:14px; font-size:13px; color:var(--text); display:none;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Task Summary</div>
+        <div id="checksTaskDescText"></div>
+      </div>
+
       <ul class="check-list" id="checksOnlyList"></ul>
     </div>
   </div>
@@ -407,11 +420,13 @@
 
   // ═══════ Full Review ═══════
   function startReview() {
+    /* — Uncomment to re-enable Drive link support —
     var link = document.getElementById('driveLink').value.trim();
+    */
     var fileInput = document.getElementById('zipUpload');
     var file = fileInput.files && fileInput.files[0];
 
-    if (!link && !file) { showToast('Please enter a Drive link or upload a ZIP file.'); return; }
+    if (!file /* && !link */) { showToast('Please upload a ZIP file.'); return; }
 
     var persona = getSelectedPersonaKey();
     setRunning(true);
@@ -419,21 +434,8 @@
     setStep(1, 'active');
     hideResults();
 
-    if (file) {
-      setStatus('Reading file (' + (file.size / 1024).toFixed(0) + ' KB)...');
-      var reader = new FileReader();
-      reader.onload = function(e) {
-        var base64 = e.target.result.split(',')[1];
-        setStep(1, 'done'); setStep(2, 'active'); setStatus('Running checks...');
-        google.script.run
-          .withSuccessHandler(onReviewSuccess)
-          .withFailureHandler(onReviewError)
-          .runReviewFromUpload(base64, file.name, persona);
-        setTimeout(function() { setStep(2, 'done'); setStep(3, 'active'); setStatus('LLM scoring...'); }, 3000);
-        setTimeout(function() { setStep(3, 'done'); setStep(4, 'active'); setStatus('Creating report...'); }, 8000);
-      };
-      reader.readAsDataURL(file);
-    } else {
+    /* — Drive link path (commented out) —
+    if (!file && link) {
       setStatus('Starting review...');
       setTimeout(function() { setStep(1, 'done'); setStep(2, 'active'); setStatus('Running checks...'); }, 500);
       google.script.run
@@ -442,7 +444,23 @@
         .runReview(link, persona);
       setTimeout(function() { setStep(2, 'done'); setStep(3, 'active'); setStatus('LLM scoring...'); }, 3000);
       setTimeout(function() { setStep(3, 'done'); setStep(4, 'active'); setStatus('Creating report...'); }, 8000);
+      return;
     }
+    */
+
+    setStatus('Reading file (' + (file.size / 1024).toFixed(0) + ' KB)...');
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var base64 = e.target.result.split(',')[1];
+      setStep(1, 'done'); setStep(2, 'active'); setStatus('Running checks...');
+      google.script.run
+        .withSuccessHandler(onReviewSuccess)
+        .withFailureHandler(onReviewError)
+        .runReviewFromUpload(base64, file.name, persona);
+      setTimeout(function() { setStep(2, 'done'); setStep(3, 'active'); setStatus('LLM scoring...'); }, 3000);
+      setTimeout(function() { setStep(3, 'done'); setStep(4, 'active'); setStatus('Creating report...'); }, 8000);
+    };
+    reader.readAsDataURL(file);
   }
 
   function onReviewSuccess(result) {
@@ -482,6 +500,15 @@
       grid.appendChild(item);
     }
 
+    var descEl = document.getElementById('resultTaskDesc');
+    var descTextEl = document.getElementById('resultTaskDescText');
+    if (r.task_description) {
+      descTextEl.textContent = r.task_description;
+      descEl.style.display = 'block';
+    } else {
+      descEl.style.display = 'none';
+    }
+
     document.getElementById('docLink').href = r.doc_url;
     renderCheckList('checksList', r.checks);
 
@@ -494,35 +521,21 @@
 
   // ═══════ Checks Only ═══════
   function startChecksOnly() {
+    /* — Uncomment to re-enable Drive link support —
     var link = document.getElementById('driveLink').value.trim();
+    */
     var fileInput = document.getElementById('zipUpload');
     var file = fileInput.files && fileInput.files[0];
 
-    if (!link && !file) { showToast('Please enter a Drive link or upload a ZIP file.'); return; }
+    if (!file /* && !link */) { showToast('Please upload a ZIP file.'); return; }
 
     var persona = getSelectedPersonaKey();
     setRunning(true);
     hideResults();
     setStatus('Running checks...');
 
-    if (file) {
-      var reader = new FileReader();
-      reader.onload = function(e) {
-        var base64 = e.target.result.split(',')[1];
-        google.script.run
-          .withSuccessHandler(function(result) {
-            setStatus('Checks complete!', 'success');
-            showChecksOnlyResults(result);
-            setRunning(false);
-          })
-          .withFailureHandler(function(err) {
-            setStatus('Error: ' + err.message, 'error');
-            setRunning(false);
-          })
-          .runChecksOnlyFromUpload(base64, file.name, persona);
-      };
-      reader.readAsDataURL(file);
-    } else {
+    /* — Drive link path (commented out) —
+    if (!file && link) {
       google.script.run
         .withSuccessHandler(function(result) {
           setStatus('Checks complete!', 'success');
@@ -534,7 +547,26 @@
           setRunning(false);
         })
         .runChecksOnly(link, persona);
+      return;
     }
+    */
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var base64 = e.target.result.split(',')[1];
+      google.script.run
+        .withSuccessHandler(function(result) {
+          setStatus('Checks complete!', 'success');
+          showChecksOnlyResults(result);
+          setRunning(false);
+        })
+        .withFailureHandler(function(err) {
+          setStatus('Error: ' + err.message, 'error');
+          setRunning(false);
+        })
+        .runChecksOnlyFromUpload(base64, file.name, persona);
+    };
+    reader.readAsDataURL(file);
   }
 
   function showChecksOnlyResults(r) {
@@ -544,6 +576,16 @@
     document.getElementById('checksUserName').textContent = r.user_name;
     document.getElementById('checksTurnCount').textContent = r.turn_count;
     document.getElementById('checksToolCount').textContent = r.tool_call_count;
+
+    var descEl = document.getElementById('checksTaskDesc');
+    var descTextEl = document.getElementById('checksTaskDescText');
+    if (r.task_description) {
+      descTextEl.textContent = r.task_description;
+      descEl.style.display = 'block';
+    } else {
+      descEl.style.display = 'none';
+    }
+
     renderCheckList('checksOnlyList', r.checks);
   }
 
@@ -707,6 +749,8 @@
   function hideResults() {
     document.getElementById('reviewResults').classList.remove('visible');
     document.getElementById('checksOnlyResults').classList.remove('visible');
+    document.getElementById('resultTaskDesc').style.display = 'none';
+    document.getElementById('checksTaskDesc').style.display = 'none';
   }
 
   function toggleCollapsible(id) {

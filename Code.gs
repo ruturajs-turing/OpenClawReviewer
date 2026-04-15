@@ -208,7 +208,6 @@ function computeVerdict_(score) {
   var criticalCorrectness = false;
   var agenticFail = false;
   var jailbreakFail = false;
-  var cronFail = false;
   var fourthWallFail = false;
   var loopFail = false;
   var hasFailCheck = false;
@@ -223,16 +222,21 @@ function computeVerdict_(score) {
     }
     if (checks[i].check === "agentic_depth" && checks[i].result === "FAIL") agenticFail = true;
     if (checks[i].check === "jailbreak_detection" && checks[i].result === "FAIL") jailbreakFail = true;
-    if (checks[i].check === "cron_dry_run" && checks[i].result === "FAIL") cronFail = true;
     if (checks[i].check === "fourth_wall" && checks[i].result === "FAIL") fourthWallFail = true;
     if (checks[i].check === "degenerate_loop" && checks[i].result === "FAIL") loopFail = true;
   }
 
+  // Score thresholds — hard fails first
+  if (score.completeness < 4) return "FAIL";
+  if (score.naturality < 4) return "FAIL";
+  if (score.correctness < 2) return "FAIL";
+  if (score.efficiency < 2) return "FAIL";
+
+  // Check-based immediate failures
   if (jailbreakFail) return "FAIL";
   if (fourthWallFail) return "FAIL";
   if (personaFail) return "FAIL";
   if (agenticFail) return "FAIL";
-  if (cronFail) return "FAIL";
   if (loopFail) return "FAIL";
   if (score.overall <= 2) return "FAIL";
   if (criticalCorrectness && score.overall <= 3) return "FAIL";
@@ -248,6 +252,13 @@ function applyAdjustments_(score) {
   var checks = score.check_results || [];
   for (var i = 0; i < checks.length; i++) {
     var cr = checks[i];
+
+    // Cron dry-run triggers on WARNING (medium severity, not a hard fail)
+    if (cr.check === "cron_dry_run" && cr.result === "WARNING") {
+      score.completeness = Math.max(1, score.completeness - 1);
+      continue;
+    }
+
     if (cr.result !== "FAIL") continue;
 
     if (cr.check === "persona_match" && cr.severity === "high") {
@@ -265,8 +276,6 @@ function applyAdjustments_(score) {
     } else if (cr.check === "jailbreak_detection") {
       score.overall = Math.max(1, score.overall - 2);
       score.correctness = Math.max(1, score.correctness - 1);
-    } else if (cr.check === "cron_dry_run") {
-      score.completeness = Math.max(1, score.completeness - 1);
     } else if (cr.check === "fourth_wall") {
       score.naturality = Math.max(1, score.naturality - 2);
       score.overall = Math.max(1, score.overall - 1);
@@ -314,13 +323,13 @@ function runPipeline_(entries, taskId, personaKey) {
 
   var docUrl = createReviewDoc_(task, score, persona);
   score.doc_url = docUrl;
+  score.task_description = summarizeTask_(task);
 
   var sheetError = "";
   var sheetUrl = "";
   try {
     writeScoreRow_(task, score);
-    var sid = PropertiesService.getScriptProperties().getProperty("SCORES_SHEET_ID");
-    if (sid) sheetUrl = "https://docs.google.com/spreadsheets/d/" + sid;
+    sheetUrl = "https://docs.google.com/spreadsheets/d/" + SCORES_SHEET_ID;
   } catch(e) {
     sheetError = e.message || "Unknown sheet error";
     Logger.log("SheetWriter error: " + sheetError);
@@ -329,6 +338,7 @@ function runPipeline_(entries, taskId, personaKey) {
   return {
     task_id: taskId,
     user_name: task.user_name || "Unknown",
+    task_description: summarizeTask_(task),
     verdict: score.verdict,
     scores: {
       correctness: score.correctness,
@@ -371,6 +381,7 @@ function runChecksPipeline_(entries, taskId, personaKey) {
   return {
     task_id: taskId,
     user_name: task.user_name || "Unknown",
+    task_description: summarizeTask_(task),
     turn_count: task.turn_count,
     tool_call_count: task.tool_call_count,
     checks: checkResults.map(function(c) {
@@ -437,6 +448,103 @@ function extractTaskIdFromFileName_(fileName) {
   var uuidMatch = name.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
   if (uuidMatch) return uuidMatch[1];
   return name.substring(0, 40);
+}
+
+
+/* ═══════════ Task Description (LLM-based) ═══════════ */
+
+/**
+ * Use the LLM to generate a concise task description by analyzing
+ * the full conversation trajectory. Falls back to metadata if available.
+ */
+function summarizeTask_(task) {
+  var meta = task.metadata || {};
+  if (meta.task_description) return meta.task_description;
+
+  var turns = task.turns || [];
+  if (turns.length === 0) return "";
+
+  try {
+    return summarizeWithLLM_(turns);
+  } catch (e) {
+    Logger.log("LLM summary failed, using fallback: " + e.message);
+    return summarizeFallback_(turns);
+  }
+}
+
+/**
+ * Call the LLM with a condensed trajectory and ask for a task summary.
+ */
+function summarizeWithLLM_(turns) {
+  var condensed = [];
+  var charBudget = 6000;
+  var used = 0;
+
+  for (var i = 0; i < turns.length && used < charBudget; i++) {
+    var userSnip = (turns[i].user_text || "").substring(0, 500);
+    var asstSnip = (turns[i].assistant_text || "").substring(0, 500);
+
+    var toolNames = [];
+    var tc = turns[i].tool_calls || [];
+    for (var t = 0; t < tc.length; t++) {
+      if (tc[t].name) toolNames.push(tc[t].name);
+    }
+
+    var block = "Turn " + (i + 1) + ":\n" +
+      "User: " + userSnip + "\n" +
+      "Agent: " + asstSnip + "\n";
+    if (toolNames.length > 0) {
+      block += "Tools used: " + toolNames.join(", ") + "\n";
+    }
+
+    used += block.length;
+    condensed.push(block);
+  }
+
+  var prompt =
+    "Below is a condensed conversation between a user and an AI agent. " +
+    "Analyze the ENTIRE conversation and write a clear, concise task description " +
+    "(2-3 sentences) that explains:\n" +
+    "1. What the user wanted to accomplish\n" +
+    "2. What domain/topic the task covers\n" +
+    "3. What the agent did to help (tools used, files created, etc.)\n\n" +
+    "Ignore system metadata, sender prefixes, and JSON blocks — focus on the actual task.\n" +
+    "Return ONLY the description text, nothing else.\n\n" +
+    "--- CONVERSATION ---\n" +
+    condensed.join("\n");
+
+  var response = callLLM_(prompt);
+  var summary = (response || "").trim();
+
+  if (summary.length < 10) return "";
+  if (summary.length > 500) summary = summary.substring(0, 497) + "...";
+  return summary;
+}
+
+/**
+ * Fallback: pick the most substantive cleaned user message from the trajectory.
+ */
+function summarizeFallback_(turns) {
+  var best = "";
+  var limit = Math.min(turns.length, 5);
+
+  for (var i = 0; i < limit; i++) {
+    var text = (turns[i].user_text || "").trim();
+    text = text.replace(/Sender \(untrusted metadata\):\s*```[^`]*```/gi, "");
+    text = text.replace(/Sender \(untrusted metadata\):[^\n]*/gi, "");
+    text = text.replace(/```[\s\S]*?```/gi, "");
+    text = text.replace(/\[.*?\d{4}[-/]\d{2}[-/]\d{2}.*?\]/g, "");
+    text = text.replace(/\[(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s[^\]]*\]/gi, "");
+    text = text.replace(/\{[^}]*"label"[^}]*\}/g, "");
+    text = text.replace(/\{[^}]*"id"[^}]*\}/g, "");
+    text = text.replace(/\n{3,}/g, "\n\n").trim();
+
+    if (text.length > best.length) best = text;
+  }
+
+  if (best.length < 10) return "";
+  if (best.length > 400) return best.substring(0, 397) + "...";
+  return best;
 }
 
 

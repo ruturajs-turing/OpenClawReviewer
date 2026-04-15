@@ -7,7 +7,12 @@
  *   - Rationale sections for each axis
  *   - Check results (PASS/FAIL/WARNING + issues)
  *   - Debug section with metadata and trajectory excerpt
+ *
+ * All docs are saved to a shared folder (REVIEW_DOCS_FOLDER_ID).
+ * If the folder doesn't exist or is blank, docs go to root Drive.
  ******************************************************/
+
+var REVIEW_DOCS_FOLDER_ID = "1HLWC-c-ojSaowa5TySnf4ESPH0eTbUA-";
 
 /**
  * Create the review report Google Doc.
@@ -21,6 +26,17 @@ function createReviewDoc_(task, score, persona) {
   var title = "OpenClaw Review — " + (score.task_id || "Unknown") + " — " + timestamp;
 
   var doc = DocumentApp.create(title);
+
+  if (REVIEW_DOCS_FOLDER_ID) {
+    try {
+      var file = DriveApp.getFileById(doc.getId());
+      var folder = DriveApp.getFolderById(REVIEW_DOCS_FOLDER_ID);
+      folder.addFile(file);
+      DriveApp.getRootFolder().removeFile(file);
+    } catch(e) {
+      Logger.log("DocBuilder: Could not move to folder: " + e.message);
+    }
+  }
   var body = doc.getBody();
 
   body.setMarginTop(36);
@@ -50,10 +66,11 @@ function createReviewDoc_(task, score, persona) {
   body.appendParagraph("Task Information").setHeading(HEADING.HEADING2);
 
   var meta = task.metadata || {};
+  var taskDesc = summarizeTask_(task);
   var infoItems = [
     ["Task ID",        score.task_id || "N/A"],
     ["User",           task.user_name || "Unknown"],
-    ["Description",    meta.task_description || "N/A"],
+    ["Task Summary",   taskDesc || "N/A"],
     ["Task Type",      (meta.task_type || []).join(", ") || "N/A"],
     ["Completion",     meta.task_completion_status || "N/A"],
     ["Turns",          String(task.turn_count || 0)],

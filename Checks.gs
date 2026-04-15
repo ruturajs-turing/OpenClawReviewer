@@ -21,13 +21,31 @@ function normalizeName_(s) {
 }
 
 function runPersonaMatch_(task, persona) {
-  if (!persona) {
-    return { check: "persona_match", result: "WARNING",
-             issues: ["No persona record found for this task's user"],
-             severity: "medium", details: {} };
+  var issues = [];
+
+  // Cross-snapshot check runs regardless of persona availability
+  var wsBefore = task.workspace_before || {};
+  var wsAfter  = task.workspace_after || {};
+  var beforeName = extractNameFromUserMd_(wsBefore["USER.md"] || "");
+  var afterName  = extractNameFromUserMd_(wsAfter["USER.md"] || "");
+
+  if (beforeName && afterName && beforeName.toLowerCase() !== afterName.toLowerCase()) {
+    issues.push("Persona changed mid-session: USER.md name was '" + beforeName +
+                "' at start, '" + afterName + "' at end — possible /new or session switch");
+  }
+  if (beforeName && !afterName && wsAfter["USER.md"]) {
+    issues.push("USER.md name was cleared during the session — possible session reset");
   }
 
-  var issues = [];
+  if (!persona) {
+    if (issues.length === 0) {
+      return { check: "persona_match", result: "WARNING",
+               issues: ["No persona record found for this task's user"],
+               severity: "medium", details: {} };
+    }
+    return { check: "persona_match", result: "FAIL",
+             issues: issues, severity: "high", details: {} };
+  }
   var userTexts = collectUserTexts_(task);
   var combinedText = userTexts.join("\n").toLowerCase();
 
@@ -105,10 +123,13 @@ function runPersonaMatch_(task, persona) {
 
   // Determine result
   var nameIssues = issues.filter(function(i) { return i.indexOf("Name mismatch") !== -1; });
+  var snapshotIssues = issues.filter(function(i) { return i.indexOf("Persona changed mid-session") !== -1; });
   var locIssues  = issues.filter(function(i) { return i.indexOf("Location claim") !== -1; });
 
   var result, severity;
   if (nameIssues.length > 0) {
+    severity = "high"; result = "FAIL";
+  } else if (snapshotIssues.length > 0) {
     severity = "high"; result = "FAIL";
   } else if (locIssues.length >= 2) {
     severity = "high"; result = "FAIL";
@@ -119,6 +140,23 @@ function runPersonaMatch_(task, persona) {
   }
 
   return { check: "persona_match", result: result, issues: issues, severity: severity, details: {} };
+}
+
+
+function extractNameFromUserMd_(content) {
+  if (!content) return "";
+  var lines = content.split("\n");
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].indexOf("**Name:**") !== -1) {
+      var name = lines[i].split("**Name:**")[1].trim();
+      if (name && name !== "_(optional)_") return name;
+    }
+    if (lines[i].indexOf("**What to call them:**") !== -1) {
+      var name2 = lines[i].split("**What to call them:**")[1].trim();
+      if (name2 && name2 !== "_(optional)_") return name2;
+    }
+  }
+  return "";
 }
 
 
@@ -790,9 +828,9 @@ function runCronDryRunCheck_(task, persona) {
     }
   }
 
-  return { check: "cron_dry_run", result: "FAIL",
-           issues: ["Cron/scheduled task detected at turn " + (cronDetectedTurn + 1) + " but no dry-run execution found in subsequent turns. Guidelines require an in-session test run."],
-           severity: "high", details: { cron_detected: true, dry_run_found: false, cron_turn: cronDetectedTurn + 1 } };
+  return { check: "cron_dry_run", result: "WARNING",
+           issues: ["Cron/scheduled task detected at turn " + (cronDetectedTurn + 1) + " but no dry-run execution found in subsequent turns. Guidelines recommend an in-session test run."],
+           severity: "medium", details: { cron_detected: true, dry_run_found: false, cron_turn: cronDetectedTurn + 1 } };
 }
 
 
